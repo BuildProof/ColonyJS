@@ -1,14 +1,12 @@
-import { providers, utils, BigNumber } from 'ethers';
+import { providers, utils } from 'ethers';
 import { Id } from '@colony/sdk';
 
 import {
   ColonyNetwork,
   ColonyRpcEndpoint,
-  Tokens,
-  ReputationClient,
 } from '../../../src/index.js';
 
-const { formatEther, isAddress } = utils;
+const { isAddress } = utils;
 
 const provider = new providers.JsonRpcProvider(ColonyRpcEndpoint.ArbitrumOne);
 const colonyAddress = '0x8e389bf45f926dDDB2BE3636290de42B68aefd51'; // Replace with your actual colony address
@@ -26,13 +24,47 @@ const getGlobalReputation = async () => {
     const membersReputation = await colony.reputation.getMembersReputation(skillId);
     const reputationList = await Promise.all(membersReputation.addresses.map(async (address) => {
       const { reputationAmount } = await colony.reputation.getReputation(skillId, address);
-      const percentage = reputationAmount.mul(100).div(totalReputation);
-      return `User: ${address}, Reputation: ${percentage.toString()}%`;
+      const percentage = reputationAmount.mul(10000).div(totalReputation).toNumber() / 100;
+      return `User: ${address}, Reputation: ${percentage.toFixed(2)}%`;
     }));
     return reputationList.join('\n');
   } catch (error) {
     console.error('Error fetching global reputation:', error);
     throw error; // Rethrow the error for further handling
+  }
+};
+
+const domainNames = {
+  1: 'All teams',
+  4: 'General',
+  3: '🅿 Intuition',
+  5: '🅿 Eco',
+  // Add more domain names as needed
+};
+
+const getDomainReputation = async (domainIds: number[]) => {
+  const colonyNetwork = new ColonyNetwork(provider);
+  const colony = await colonyNetwork.getColony(colonyAddress);
+
+  try {
+    const reputationDetails = await Promise.all(domainIds.map(async (domainId) => {
+      const { skillId } = await colony.getTeam(domainId);
+      const totalReputation = await colony.reputation.getTotalReputation(skillId);
+      const membersReputation = await colony.reputation.getMembersReputation(skillId);
+      const reputationList = await Promise.all(membersReputation.addresses.map(async (address) => {
+        const { reputationAmount } = await colony.reputation.getReputation(skillId, address);
+        const percentage = reputationAmount.mul(10000).div(totalReputation.reputationAmount).toNumber() / 100;
+        return `User: ${address}, Reputation: ${percentage.toFixed(2)}%`;
+      }));
+      return {
+        domainName: domainNames[domainId] || `Domain ${domainId}`,
+        reputationList: reputationList.join('\n'),
+      };
+    }));
+    return reputationDetails;
+  } catch (error) {
+    console.error('Error fetching domain reputation:', error);
+    throw error;
   }
 };
 
@@ -55,7 +87,6 @@ const kalm = () => {
   errElm.innerText = '';
 };
 const speak = (msg: string) => {
-  console.log('Updating result element with message:', msg);
   if (resultElm) {
     resultElm.innerText = msg;
   } else {
@@ -65,18 +96,22 @@ const speak = (msg: string) => {
 
 button.addEventListener('click', async () => {
   kalm();
-  const colonyAddress = addressInput?.value;
-  if (!isAddress(colonyAddress)) {
+  const inputColonyAddress = addressInput?.value;
+  if (!isAddress(inputColonyAddress)) {
     return panik('This is not a valid address');
   }
   speak('Thinking...');
   addressInput.value = '';
   try {
-    const reputationList = await getGlobalReputation();
-    speak(reputationList);
+    const domainIds = [1, 4, 3, 5]; // Your specified domain IDs
+    const reputationDetails = await getDomainReputation(domainIds);
+    const reputationMessages = reputationDetails.map(domain => {
+      return `Domain: ${domain.domainName}\n${domain.reputationList}`;
+    }).join('\n\n');
+    speak(reputationMessages);
   } catch (e) {
     panik(`Found an error: ${(e as Error).message}`);
-    console.error('Error loading global reputation:', e);
+    console.error('Error loading domain reputation:', e);
     speak('');
   }
   return null;
