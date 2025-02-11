@@ -1,21 +1,39 @@
-import { providers, utils } from 'ethers';
+import { providers, utils, BigNumber } from 'ethers';
+import { Id } from '@colony/sdk';
 
 import {
   ColonyNetwork,
   ColonyRpcEndpoint,
   Tokens,
+  ReputationClient,
 } from '../../../src/index.js';
 
 const { formatEther, isAddress } = utils;
 
 const provider = new providers.JsonRpcProvider(ColonyRpcEndpoint.ArbitrumOne);
+const colonyAddress = '0x8e389bf45f926dDDB2BE3636290de42B68aefd51'; // Replace with your actual colony address
 
-// Get the Colony's CLNY funding in the root domain (on Arbitrum One)
-const getColonyFunding = async (colonyAddress: string) => {
+const getGlobalReputation = async () => {
   const colonyNetwork = new ColonyNetwork(provider);
   const colony = await colonyNetwork.getColony(colonyAddress);
-  const funding = await colony.getBalance(Tokens.ArbitrumOne.CLNY);
-  return formatEther(funding);
+
+  // Get the skill ID for the root domain
+  const { skillId } = await colony.getTeam(Id.RootDomain);
+
+  // Fetch the total reputation for the colony
+  try {
+    const { reputationAmount: totalReputation } = await colony.reputation.getTotalReputation(skillId);
+    const membersReputation = await colony.reputation.getMembersReputation(skillId);
+    const reputationList = await Promise.all(membersReputation.addresses.map(async (address) => {
+      const { reputationAmount } = await colony.reputation.getReputation(skillId, address);
+      const percentage = reputationAmount.mul(100).div(totalReputation);
+      return `User: ${address}, Reputation: ${percentage.toString()}%`;
+    }));
+    return reputationList.join('\n');
+  } catch (error) {
+    console.error('Error fetching global reputation:', error);
+    throw error; // Rethrow the error for further handling
+  }
 };
 
 // Just some basic setup to display the UI
@@ -37,7 +55,12 @@ const kalm = () => {
   errElm.innerText = '';
 };
 const speak = (msg: string) => {
-  resultElm.innerText = msg;
+  console.log('Updating result element with message:', msg);
+  if (resultElm) {
+    resultElm.innerText = msg;
+  } else {
+    console.error('Result element not found.');
+  }
 };
 
 button.addEventListener('click', async () => {
@@ -48,14 +71,12 @@ button.addEventListener('click', async () => {
   }
   speak('Thinking...');
   addressInput.value = '';
-  let funding: string;
   try {
-    funding = await getColonyFunding(colonyAddress);
-    speak(
-      `${funding} CLNY in root domain of Colony with address: ${colonyAddress}`,
-    );
+    const reputationList = await getGlobalReputation();
+    speak(reputationList);
   } catch (e) {
     panik(`Found an error: ${(e as Error).message}`);
+    console.error('Error loading global reputation:', e);
     speak('');
   }
   return null;
