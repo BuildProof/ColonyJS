@@ -1,5 +1,5 @@
 import { providers, utils } from 'ethers';
-import { Id } from '@colony/sdk';
+import { Id, ColonyRole } from '@colony/sdk';
 
 import {
   ColonyNetwork,
@@ -35,10 +35,10 @@ const getGlobalReputation = async () => {
 };
 
 const domainNames = {
-  1: 'All teams',
-  4: 'General',
-  3: '🅿 Intuition',
-  5: '🅿 Eco',
+  1: 'General',
+  4: '🅿 Intuition',
+  3: '🅿 Eco',
+  5: '🅿 Jokerace',
   // Add more domain names as needed
 };
 
@@ -64,6 +64,25 @@ const getDomainReputation = async (domainIds: number[]) => {
     return reputationDetails;
   } catch (error) {
     console.error('Error fetching domain reputation:', error);
+    throw error;
+  }
+};
+
+const getRolesForDomains = async (address: string, domainIds: number[]) => {
+  const colonyNetwork = new ColonyNetwork(provider);
+  const colony = await colonyNetwork.getColony(colonyAddress);
+
+  try {
+    const rolesDetails = await Promise.all(domainIds.map(async (domainId) => {
+      const roles = await colony.getRoles(address, domainId);
+      return {
+        domainName: domainNames[domainId] || `Domain ${domainId}`,
+        roles: roles.map(role => ColonyRole[role] || role).join(', '),
+      };
+    }));
+    return rolesDetails;
+  } catch (error) {
+    console.error('Error fetching roles:', error);
     throw error;
   }
 };
@@ -105,13 +124,17 @@ button.addEventListener('click', async () => {
   try {
     const domainIds = [1, 4, 3, 5]; // Your specified domain IDs
     const reputationDetails = await getDomainReputation(domainIds);
+    const rolesDetails = await getRolesForDomains(inputColonyAddress, domainIds);
     const reputationMessages = reputationDetails.map(domain => {
       return `Domain: ${domain.domainName}\n${domain.reputationList}`;
     }).join('\n\n');
-    speak(reputationMessages);
+    const rolesMessages = rolesDetails.map(domain => {
+      return `Domain: ${domain.domainName}\nRoles: ${domain.roles}`;
+    }).join('\n\n');
+    speak(`${reputationMessages}\n\n${rolesMessages}`);
   } catch (e) {
     panik(`Found an error: ${(e as Error).message}`);
-    console.error('Error loading domain reputation:', e);
+    console.error('Error loading domain reputation or roles:', e);
     speak('');
   }
   return null;
