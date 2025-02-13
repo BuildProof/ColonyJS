@@ -1,52 +1,36 @@
-🎪 Colony TypeScript libraries
+# How to Use
 
-[![Discord](https://img.shields.io/discord/562263648173555742)](https://discord.gg/feVZWwysqM)
+To launch the app and test with the SDK, follow these steps:
 
-# The Colony TypeScript libraries
+## Versioning
 
-We are providing the following packages in this monorepo:
+You will need to use the following versions:
+- **Node**: `^18 || ^20 || ^22`
+- **pnpm**: `^10`
 
-* [`@colony/sdk`](packages/sdk) - The development kit to build on top of Colony
-* [`@colony/colony-js`](packages/colony-js) - The Colony TypeScript reference implementation
-* [`@colony/core`](packages/core) - Shared utilities, types and constants for all Colony TypeScript libraries
-* [`@colony/contractor`](packages/contractor) - A nifty tool that creates Colony Network TypeScript bindings
-* [`@colony/events`](packages/events) - All Colony event types in one! Parse and serialize Colony event metadata
-* [`@colony/tokens`](packages/tokens) - Pre-built Colony token contract bindings
+You can install the dependencies using:
 
-## Developing
+bash
+pnpm install
 
-To start development on any of the included libraries, make sure you have Node v16.x and [`pnpm`](https://pnpm.io) v8.x installed.
 
-Run `pnpm run bootstrap` first
+## Building Packages
 
-To install all required dependencies run `pnpm run bootstrap` (this is important!) the first time, later you can just do `pnpm install --frozen-lockfile` in the root directory of the repository.
+To run the application, you must build every package. Execute the following command in each of the directories:
+pnpm build
 
-You can run `pnpm lint`, `pnpm typecheck`, `pnpm test` and `pnpm build` in the root directory (will build all packages) or in the individual package directories.
+- `/packages/colonyJS`
+- `/packages/contractor`
+- `/packages/core`
+- `/packages/events`
+- `/packages/sdk`
 
-**Please make sure to include a [changeset](https://github.com/changesets/changesets/blob/main/docs/adding-a-changeset.md) when submitting a PR.**
+## Running the Example
 
-## Creating a main release
+Once you have built all packages, navigate to the `packages/sdk` directory and run:
 
-colonyJS is using [changesets](https://github.com/changesets/changesets) to create releases. Here's the workflow:
 
-1) Create a PR and add a [changeset](https://github.com/changesets/changesets/blob/main/docs/adding-a-changeset.md) within the PR
-2) Have the PR reviewed and merged into `main`
-3) `changesets` will create a release PR which collects all changes that have been merged since the last release
-4) This PR can be merged at any point to then create a new main release
+pnpm examples:browser   
 
-## Creating a snapshot (development) release
-
-1) Push your desired changes to a new branch (**do not forget to add a changeset - see above**)
-2) Use the "Release a snapshot" action under "Actions"
-  ![image](https://github.com/JoinColony/colonyJS/assets/2174084/0961174c-fee0-417f-a0d8-8fc286e4fa2d)
-4) Pick your branch that you would like to release a snapshot from
-  ![image](https://github.com/JoinColony/colonyJS/assets/2174084/365ab525-3b36-472e-9f73-56557fc8812d)
-5) The snapshot release will be available in npm under `0.0.0-next-TIMESTAMP` or `@snapshot`
-
-## Contributing
-
-All contributions are welcome. Please read the [Contributing Guidelines](CONTRIBUTING.md) and review our [Code of Conduct](CODE_OF_CONDUCT.md) before submitting a PR.
-
-## License
-
-GPL-3.0
+Open the app in your browser, click on **Reputation & Roles**, and enter the Buildproof_test colony address:
+0x8e389bf45f926dDDB2BE3636290de42B68aefd51
