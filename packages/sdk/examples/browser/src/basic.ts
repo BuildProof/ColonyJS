@@ -75,9 +75,10 @@ const getRolesForDomains = async (address: string, domainIds: number[]) => {
   try {
     const rolesDetails = await Promise.all(domainIds.map(async (domainId) => {
       const roles = await colony.getRoles(address, domainId);
+      const adminRole = roles.includes(ColonyRole.Administration) ? 'Administration' : 'None';
       return {
         domainName: domainNames[domainId] || `Domain ${domainId}`,
-        roles: roles.map(role => ColonyRole[role] || role).join(', '),
+        roles: adminRole,
       };
     }));
     return rolesDetails;
@@ -85,6 +86,66 @@ const getRolesForDomains = async (address: string, domainIds: number[]) => {
     console.error('Error fetching roles:', error);
     throw error;
   }
+};
+
+const getRolesForRootDomain = async (address: string) => {
+  const colonyNetwork = new ColonyNetwork(provider);
+  const colony = await colonyNetwork.getColony(colonyAddress);
+
+  try {
+    const roles = await colony.getRoles(address, Id.RootDomain);
+    const adminRole = roles.includes(ColonyRole.Administration) ? 'Administration' : 'None';
+    return adminRole;
+  } catch (error) {
+    console.error('Error fetching roles for Root domain:', error);
+    throw error;
+  }
+};
+
+type UserRole = {
+  address: string;
+  domains: {
+    domainId: number;
+    domainName: string;
+    roles: string;
+    reputation: string;
+  }[];
+};
+
+const checkAdminRoleAndReputationForAllUsers = async (domainIds: number[]): Promise<UserRole[]> => {
+  const colonyNetwork = new ColonyNetwork(provider);
+  const colony = await colonyNetwork.getColony(colonyAddress);
+
+  const rolesData: UserRole[] = [];
+
+  try {
+    // Fetch all addresses with reputation
+    const { skillId } = await colony.getTeam(Id.RootDomain);
+    const membersReputation = await colony.reputation.getMembersReputation(skillId);
+    const addresses = membersReputation.addresses;
+
+    for (const address of addresses) {
+      const userRoles: UserRole = { address, domains: [] };
+      for (const domainId of domainIds) {
+        const roles = await colony.getRoles(address, domainId);
+        const { reputationAmount } = await colony.reputation.getReputation(skillId, address);
+        const totalReputation = await colony.reputation.getTotalReputation(skillId);
+        const percentage = reputationAmount.mul(10000).div(totalReputation.reputationAmount).toNumber() / 100;
+        userRoles.domains.push({
+          domainId,
+          domainName: domainNames[domainId] || `Domain ${domainId}`,
+          roles: roles.map(role => ColonyRole[role] || `Unknown Role (${role})`).join(', '),
+          reputation: `${percentage.toFixed(2)}%`
+        });
+      }
+      rolesData.push(userRoles);
+    }
+  } catch (error) {
+    console.error('Error checking admin role and reputation for all users:', error);
+    throw error;
+  }
+
+  return rolesData;
 };
 
 // Just some basic setup to display the UI
@@ -123,15 +184,14 @@ button.addEventListener('click', async () => {
   addressInput.value = '';
   try {
     const domainIds = [1, 4, 3, 5]; // Your specified domain IDs
-    const reputationDetails = await getDomainReputation(domainIds);
-    const rolesDetails = await getRolesForDomains(inputColonyAddress, domainIds);
-    const reputationMessages = reputationDetails.map(domain => {
-      return `Domain: ${domain.domainName}\n${domain.reputationList}`;
+    const allRolesData = await checkAdminRoleAndReputationForAllUsers(domainIds);
+    const rolesMessages = allRolesData.map(user => {
+      const userRoles = user.domains.map(domain => {
+        return `Domain: ${domain.domainName}, Roles: ${domain.roles}, Reputation: ${domain.reputation}`;
+      }).join('\n');
+      return `User: ${user.address}\n${userRoles}`;
     }).join('\n\n');
-    const rolesMessages = rolesDetails.map(domain => {
-      return `Domain: ${domain.domainName}\nRoles: ${domain.roles}`;
-    }).join('\n\n');
-    speak(`${reputationMessages}\n\n${rolesMessages}`);
+    speak(`Roles and Reputation Data:\n\n${rolesMessages}`);
   } catch (e) {
     panik(`Found an error: ${(e as Error).message}`);
     console.error('Error loading domain reputation or roles:', e);
