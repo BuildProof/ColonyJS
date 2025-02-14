@@ -1,40 +1,105 @@
-import { providers, utils, BigNumber } from 'ethers';
-import { Id } from '@colony/sdk';
+import { providers, utils } from 'ethers';
+import { Id, ColonyRole } from '@colony/sdk';
 
 import {
   ColonyNetwork,
   ColonyRpcEndpoint,
-  Tokens,
-  ReputationClient,
 } from '../../../src/index.js';
 
-const { formatEther, isAddress } = utils;
+const { isAddress } = utils;
 
 const provider = new providers.JsonRpcProvider(ColonyRpcEndpoint.ArbitrumOne);
 const colonyAddress = '0x8e389bf45f926dDDB2BE3636290de42B68aefd51'; // Replace with your actual colony address
 
-const getGlobalReputation = async () => {
+
+const domainNames = {
+  1: 'General',
+  4: '🅿 Intuition',
+  3: '🅿 Eco',
+  5: '🅿 Jokerace',
+  // Add more domain names as needed
+};
+
+const getDomainReputation = async (domainIds: number[]) => {
   const colonyNetwork = new ColonyNetwork(provider);
   const colony = await colonyNetwork.getColony(colonyAddress);
 
-  // Get the skill ID for the root domain
-  const { skillId } = await colony.getTeam(Id.RootDomain);
-
-  // Fetch the total reputation for the colony
   try {
-    const { reputationAmount: totalReputation } = await colony.reputation.getTotalReputation(skillId);
-    const membersReputation = await colony.reputation.getMembersReputation(skillId);
-    const reputationList = await Promise.all(membersReputation.addresses.map(async (address) => {
-      const { reputationAmount } = await colony.reputation.getReputation(skillId, address);
-      const percentage = reputationAmount.mul(100).div(totalReputation);
-      return `User: ${address}, Reputation: ${percentage.toString()}%`;
+    const reputationDetails = await Promise.all(domainIds.map(async (domainId) => {
+      const { skillId } = await colony.getTeam(domainId);
+      const totalReputation = await colony.reputation.getTotalReputation(skillId);
+      const membersReputation = await colony.reputation.getMembersReputation(skillId);
+      const reputationList = await Promise.all(membersReputation.addresses.map(async (address) => {
+        const { reputationAmount } = await colony.reputation.getReputation(skillId, address);
+        const percentage = reputationAmount.mul(10000).div(totalReputation.reputationAmount).toNumber() / 100;
+        return `User: ${address}, Reputation: ${percentage.toFixed(2)}%`;
+      }));
+      return {
+        domainName: domainNames[domainId] || `Domain ${domainId}`,
+        reputationList: reputationList.join('\n'),
+      };
     }));
-    return reputationList.join('\n');
+    return reputationDetails;
   } catch (error) {
-    console.error('Error fetching global reputation:', error);
-    throw error; // Rethrow the error for further handling
+    console.error('Error fetching domain reputation:', error);
+    throw error;
   }
 };
+
+type UserRole = {
+  address: string;
+  domains: {
+    domainId: number;
+    domainName: string;
+    roles: string;
+    reputation: string;
+  }[];
+};
+
+const checkAdminRoleAndReputationForAllUsers = async (domainIds: number[]): Promise<UserRole[]> => {
+  const colonyNetwork = new ColonyNetwork(provider);
+  const colony = await colonyNetwork.getColony(colonyAddress);
+
+  const rolesData: UserRole[] = [];
+
+  try {
+    // Fetch all addresses with reputation
+    const { skillId } = await colony.getTeam(Id.RootDomain);
+    const membersReputation = await colony.reputation.getMembersReputation(skillId);
+    const addresses = membersReputation.addresses;
+
+    // Fetch domain reputations in parallel
+    const domainReputationData = await getDomainReputation(domainIds);
+
+    for (const address of addresses) {
+      const userRoles: UserRole = { address, domains: [] };
+
+      for (const domainId of domainIds) {
+        const roles = await colony.getRoles(address, domainId);
+
+        // Get reputation data from the pre-fetched domain reputation
+        const domainReputation = domainReputationData.find(d => d.domainName === (domainNames[domainId] || `Domain ${domainId}`));
+        const userReputationEntry = domainReputation?.reputationList
+          .split('\n')
+          .find(line => line.includes(address));
+
+        userRoles.domains.push({
+          domainId,
+          domainName: domainNames[domainId] || `Domain ${domainId}`,
+          roles: roles.map(role => ColonyRole[role] || `Unknown Role (${role})`).join(', '),
+          reputation: userReputationEntry ? userReputationEntry.split(': ')[2] : '0%'
+        });
+      }
+      rolesData.push(userRoles);
+    }
+  } catch (error) {
+    console.error('Error checking admin role and reputation for all users:', error);
+    throw error;
+  }
+
+  return rolesData;
+};
+
 
 // Just some basic setup to display the UI
 const addressInput: HTMLInputElement | null =
@@ -55,7 +120,6 @@ const kalm = () => {
   errElm.innerText = '';
 };
 const speak = (msg: string) => {
-  console.log('Updating result element with message:', msg);
   if (resultElm) {
     resultElm.innerText = msg;
   } else {
@@ -65,18 +129,25 @@ const speak = (msg: string) => {
 
 button.addEventListener('click', async () => {
   kalm();
-  const colonyAddress = addressInput?.value;
-  if (!isAddress(colonyAddress)) {
+  const inputColonyAddress = addressInput?.value;
+  if (!isAddress(inputColonyAddress)) {
     return panik('This is not a valid address');
   }
   speak('Thinking...');
   addressInput.value = '';
   try {
-    const reputationList = await getGlobalReputation();
-    speak(reputationList);
+    const domainIds = [1, 4, 3, 5]; // Your specified domain IDs
+    const allRolesData = await checkAdminRoleAndReputationForAllUsers(domainIds);
+    const rolesMessages = allRolesData.map(user => {
+      const userRoles = user.domains.map(domain => {
+        return `Domain: ${domain.domainName}, Roles: ${domain.roles}, Reputation: ${domain.reputation}`;
+      }).join('\n');
+      return `User: ${user.address}\n${userRoles}`;
+    }).join('\n\n');
+    speak(`Roles and Reputation Data:\n\n${rolesMessages}`);
   } catch (e) {
     panik(`Found an error: ${(e as Error).message}`);
-    console.error('Error loading global reputation:', e);
+    console.error('Error loading domain reputation or roles:', e);
     speak('');
   }
   return null;
