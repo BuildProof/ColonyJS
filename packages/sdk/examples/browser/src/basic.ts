@@ -11,28 +11,6 @@ const { isAddress } = utils;
 const provider = new providers.JsonRpcProvider(ColonyRpcEndpoint.ArbitrumOne);
 const colonyAddress = '0x8e389bf45f926dDDB2BE3636290de42B68aefd51'; // Replace with your actual colony address
 
-const getGlobalReputation = async () => {
-  const colonyNetwork = new ColonyNetwork(provider);
-  const colony = await colonyNetwork.getColony(colonyAddress);
-
-  // Get the skill ID for the root domain
-  const { skillId } = await colony.getTeam(Id.RootDomain);
-
-  // Fetch the total reputation for the colony
-  try {
-    const { reputationAmount: totalReputation } = await colony.reputation.getTotalReputation(skillId);
-    const membersReputation = await colony.reputation.getMembersReputation(skillId);
-    const reputationList = await Promise.all(membersReputation.addresses.map(async (address) => {
-      const { reputationAmount } = await colony.reputation.getReputation(skillId, address);
-      const percentage = reputationAmount.mul(10000).div(totalReputation).toNumber() / 100;
-      return `User: ${address}, Reputation: ${percentage.toFixed(2)}%`;
-    }));
-    return reputationList.join('\n');
-  } catch (error) {
-    console.error('Error fetching global reputation:', error);
-    throw error; // Rethrow the error for further handling
-  }
-};
 
 const domainNames = {
   1: 'General',
@@ -68,40 +46,6 @@ const getDomainReputation = async (domainIds: number[]) => {
   }
 };
 
-const getRolesForDomains = async (address: string, domainIds: number[]) => {
-  const colonyNetwork = new ColonyNetwork(provider);
-  const colony = await colonyNetwork.getColony(colonyAddress);
-
-  try {
-    const rolesDetails = await Promise.all(domainIds.map(async (domainId) => {
-      const roles = await colony.getRoles(address, domainId);
-      const adminRole = roles.includes(ColonyRole.Administration) ? 'Administration' : 'None';
-      return {
-        domainName: domainNames[domainId] || `Domain ${domainId}`,
-        roles: adminRole,
-      };
-    }));
-    return rolesDetails;
-  } catch (error) {
-    console.error('Error fetching roles:', error);
-    throw error;
-  }
-};
-
-const getRolesForRootDomain = async (address: string) => {
-  const colonyNetwork = new ColonyNetwork(provider);
-  const colony = await colonyNetwork.getColony(colonyAddress);
-
-  try {
-    const roles = await colony.getRoles(address, Id.RootDomain);
-    const adminRole = roles.includes(ColonyRole.Administration) ? 'Administration' : 'None';
-    return adminRole;
-  } catch (error) {
-    console.error('Error fetching roles for Root domain:', error);
-    throw error;
-  }
-};
-
 type UserRole = {
   address: string;
   domains: {
@@ -124,18 +68,26 @@ const checkAdminRoleAndReputationForAllUsers = async (domainIds: number[]): Prom
     const membersReputation = await colony.reputation.getMembersReputation(skillId);
     const addresses = membersReputation.addresses;
 
+    // Fetch domain reputations in parallel
+    const domainReputationData = await getDomainReputation(domainIds);
+
     for (const address of addresses) {
       const userRoles: UserRole = { address, domains: [] };
+
       for (const domainId of domainIds) {
         const roles = await colony.getRoles(address, domainId);
-        const { reputationAmount } = await colony.reputation.getReputation(skillId, address);
-        const totalReputation = await colony.reputation.getTotalReputation(skillId);
-        const percentage = reputationAmount.mul(10000).div(totalReputation.reputationAmount).toNumber() / 100;
+
+        // Get reputation data from the pre-fetched domain reputation
+        const domainReputation = domainReputationData.find(d => d.domainName === (domainNames[domainId] || `Domain ${domainId}`));
+        const userReputationEntry = domainReputation?.reputationList
+          .split('\n')
+          .find(line => line.includes(address));
+
         userRoles.domains.push({
           domainId,
           domainName: domainNames[domainId] || `Domain ${domainId}`,
           roles: roles.map(role => ColonyRole[role] || `Unknown Role (${role})`).join(', '),
-          reputation: `${percentage.toFixed(2)}%`
+          reputation: userReputationEntry ? userReputationEntry.split(': ')[2] : '0%'
         });
       }
       rolesData.push(userRoles);
@@ -147,6 +99,7 @@ const checkAdminRoleAndReputationForAllUsers = async (domainIds: number[]): Prom
 
   return rolesData;
 };
+
 
 // Just some basic setup to display the UI
 const addressInput: HTMLInputElement | null =
